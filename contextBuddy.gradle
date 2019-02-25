@@ -1,0 +1,71 @@
+// Required java 11 on cp
+
+class ContextBuddyPlugin implements Plugin<Project> {
+    void apply(Project project) {
+        File out = project.rootProject.file("target").getAbsoluteFile()
+        String base = out.getParentFile().getAbsolutePath()
+        String projectOut = new File(out, project.name).getAbsolutePath()
+
+
+        if (project.getRootProject() == project) {
+            project.configurations {
+                generateBuddy
+            }
+
+            project.dependencies {
+                generateBuddy group: 'com.github.romanowski', name: 'context_buddy_2.12', version: '0.2.1', configuration: "compile"
+            }
+            Task genTask = project.task('generateContextBuddy', type: JavaExec) {
+                classpath = project.configurations.generateBuddy
+                main = "com.github.romanowski.metablame.JavaFullPackage"
+                args base, new File(out.getParentFile(), ".contexBuddy").getAbsolutePath()
+            }
+        }
+
+        project.tasks.withType(JavaCompile).each {
+            project.rootProject.tasks.generateContextBuddy.dependsOn(it)
+            it.options.compilerArgs += ["-Xplugin:semanticdb $projectOut --sourceroot $base"]
+            println("Wire $it")
+        }
+
+        project.tasks.whenTaskAdded {
+            if (it instanceof JavaCompile) {
+                project.rootProject.tasks.generateContextBuddy.dependsOn(it)
+                it.options.compilerArgs += ["-Xplugin:semanticdb $projectOut --sourceroot $base"]
+            }
+        }
+
+        if(project.hasProperty('compileJava')){
+            project.compileJava {
+                options.compilerArgs += ["-Xplugin:semanticdb $projectOut --sourceroot $base"]
+            }
+        }
+
+
+        project.afterEvaluate {
+           project.dependencies {
+                annotationProcessor group: 'org.scalameta',
+                    name: 'semanticdb-javac_2.12', version: '4.1.4-2-buddy', configuration: "compile"
+                testAnnotationProcessor group: 'org.scalameta',
+                    name: 'semanticdb-javac_2.12', version: '4.1.4-2-buddy', configuration: "compile"
+            }
+        }
+
+
+        project.repositories {
+            ivy {
+                url "http://wip-repos.s3-website.eu-central-1.amazonaws.com"
+                layout 'pattern', {
+                    artifact "[organisation]/[module]/(scala_[scalaVersion]/)(sbt_[sbtVersion]/)[revision]/[type]s/[artifact](-[classifier]).[ext]"
+                    ivy "[organisation]/[module]/(scala_[scalaVersion]/)(sbt_[sbtVersion]/)[revision]/[type]s/[artifact](-[classifier]).[ext]"
+                }
+            }
+        }
+    }
+}
+
+apply plugin: ContextBuddyPlugin
+
+subprojects {
+   apply plugin: ContextBuddyPlugin
+}
